@@ -7,7 +7,22 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-    <script src="https://code.responsivevoice.org/responsivevoice.js?key=mF2MeDsL"></script>
+
+    <script>
+        function loadResponsiveVoice() {
+            const key = document.getElementById('responsiveVoiceApiKey').value.trim();
+            if (key) {
+                const script = document.createElement('script');
+                script.src = `https://code.responsivevoice.org/responsivevoice.js?key=${key}`;
+                document.head.appendChild(script);
+            } else {
+                console.warn('ResponsiveVoice key is missing.');
+            }
+        }
+
+        // Call loadResponsiveVoice when the page loads or when needed
+        document.addEventListener('DOMContentLoaded', loadResponsiveVoice);
+    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -217,6 +232,11 @@
                         <label class="block text-sm font-medium mb-2">Gemini API Key</label>
                         <input type="password" id="geminiApiKey" class="input-field" 
                                placeholder="Enter your Gemini API key">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">ResponsiveVoice API Key</label>
+                        <input type="text" id="responsiveVoiceApiKey" class="input-field"
+                               placeholder="Enter your ResponsiveVoice API key">
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-2">Video Style</label>
@@ -921,11 +941,12 @@ Make it more like Fireship's signature style with:
             // Browser voices as fallback
             const browserVoices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en'));
             if (browserVoices.length > 0) {
-                if (voiceSelect.options.length > 0) {
-                    const separator = document.createElement('option');
-                    separator.disabled = true;
-                    separator.textContent = '--- Browser Voices ---';
-                    voiceSelect.appendChild(separator);
+                if (!document.querySelector('option[value=""]')) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'Default Browser Voice';
+                    option.dataset.engine = 'browser';
+                    voiceSelect.appendChild(option);
                 }
                 
                 browserVoices.forEach(voice => {
@@ -936,233 +957,208 @@ Make it more like Fireship's signature style with:
                     voiceSelect.appendChild(option);
                 });
             }
-            
-            if (voiceSelect.options.length === 0) {
-                voiceSelect.innerHTML = '<option value="">No voices available</option>';
-            }
         }
 
         function updateVoicePreview() {
-            const voiceSelect = document.getElementById('voiceType');
-            videoData.selectedVoice = {
-                name: voiceSelect.value,
-                engine: voiceSelect.options[voiceSelect.selectedIndex]?.dataset.engine
-            };
-            saveData();
-        }
-
-        function testVoice() {
-            const testText = "Hey developers! This is how your Fireship-style video will sound. Pretty cool, right?";
-            speakText(testText);
-        }
-
-        function speakText(text, onEnd = null) {
+            const voice = document.getElementById('voiceType').value;
             const rate = document.getElementById('speechRate').value;
             const pitch = document.getElementById('voicePitch').value;
             
-            if (videoData.selectedVoice?.engine === 'responsivevoice' && typeof responsiveVoice !== 'undefined') {
-                responsiveVoice.speak(text, videoData.selectedVoice.name, {
-                    rate: rate,
-                    pitch: pitch,
-                    onend: onEnd
-                });
-            } else if (videoData.selectedVoice?.engine === 'browser') {
-                const utterance = new SpeechSynthesisUtterance(text);
-                const voice = speechSynthesis.getVoices().find(v => v.name === videoData.selectedVoice.name);
-                if (voice) utterance.voice = voice;
+            if (typeof responsiveVoice !== 'undefined' && voice) {
+                // ResponsiveVoice preview
+                const text = 'This is a preview of the selected voice.';
+                responsiveVoice.speak(text, voice, { rate: rate, pitch: pitch });
+            } else {
+                // Browser speech synthesis preview
+                const utterance = new SpeechSynthesisUtterance('This is a preview of the selected voice.');
+                utterance.voice = speechSynthesis.getVoices().find(v => v.name === voice) || null;
                 utterance.rate = rate;
                 utterance.pitch = pitch;
-                utterance.onend = onEnd;
                 speechSynthesis.speak(utterance);
             }
         }
 
-        // Video Preview and Export
-        async function playPreview() {
-            if (!videoData.scenes.length) {
-                showNotification('No scenes available for preview', 'error');
+        function testVoice() {
+            const voice = document.getElementById('voiceType').value;
+            const rate = document.getElementById('speechRate').value;
+            const pitch = document.getElementById('voicePitch').value;
+            const script = document.getElementById('generatedScript').value.trim();
+            
+            if (!script) {
+                showNotification('No script available for voice test', 'error');
                 return;
             }
             
-            if (!videoData.selectedVoice) {
-                showNotification('Please select a voice first', 'error');
-                return;
+            if (typeof responsiveVoice !== 'undefined' && voice) {
+                // ResponsiveVoice test
+                responsiveVoice.speak(script, voice, { rate: rate, pitch: pitch });
+            } else {
+                // Browser speech synthesis test
+                const utterance = new SpeechSynthesisUtterance(script);
+                utterance.voice = speechSynthesis.getVoices().find(v => v.name === voice) || null;
+                utterance.rate = rate;
+                utterance.pitch = pitch;
+                speechSynthesis.speak(utterance);
             }
-            
-            isPlaying = true;
-            currentScene = 0;
-            
-            document.getElementById('previewControls').style.display = 'none';
-            playScene(currentScene);
         }
 
-        function playScene(sceneIndex) {
-            if (!isPlaying || sceneIndex >= videoData.scenes.length) {
-                stopPreview();
-                return;
-            }
+        function playPreview() {
+            const image = document.getElementById('previewImage');
+            const canvas = document.getElementById('exportCanvas');
+            const context = canvas.getContext('2d');
+            const video = document.createElement('video');
             
-            const scene = videoData.scenes[sceneIndex];
-            const previewImage = document.getElementById('previewImage');
+            video.src = image.src.replace('blob:', '');
+            video.play();
             
-            // Show current scene image
-            previewImage.src = scene.localImageFile ? 
-                URL.createObjectURL(scene.localImageFile) : 
-                (scene.imageUrl || 'https://via.placeholder.com/1280x720/1E293B/E2E8F0?text=Scene+' + (sceneIndex + 1));
-            previewImage.classList.remove('hidden');
-            
-            // Speak the narration
-            speakText(scene.narrator, () => {
-                if (isPlaying) {
-                    currentScene++;
-                    playScene(currentScene);
-                }
-            });
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                image.classList.add('hidden');
+                canvas.classList.remove('hidden');
+            };
         }
 
         function playFullPreview() {
-            playPreview();
-        }
-
-        function stopPreview() {
-            isPlaying = false;
+            const script = document.getElementById('generatedScript').value.trim();
+            const apiKey = document.getElementById('geminiApiKey').value.trim();
+            const voice = document.getElementById('voiceType').value;
+            const rate = document.getElementById('speechRate').value;
+            const pitch = document.getElementById('voicePitch').value;
             
-            // Stop any ongoing speech
-            if (typeof responsiveVoice !== 'undefined') {
-                responsiveVoice.cancel();
-            }
-            speechSynthesis.cancel();
-            
-            // Reset preview
-            document.getElementById('previewImage').classList.add('hidden');
-            document.getElementById('previewControls').style.display = 'flex';
-            currentScene = 0;
-        }
-
-        async function exportVideo() {
-            if (!videoData.scenes.length) {
-                showNotification('No scenes to export', 'error');
+            if (!script) {
+                showNotification('No script available for full preview', 'error');
                 return;
             }
             
-            showLoading('btnExport', 'Preparing Export...');
+            showLoading('btnExport', 'Rendering Video...');
             
-            try {
-                const canvas = document.getElementById('exportCanvas');
-                const ctx = canvas.getContext('2d');
-                canvas.classList.remove('hidden');
-                
-                // Setup MediaRecorder
-                const stream = canvas.captureStream(30);
-                mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: 'video/webm;codecs=vp9'
-                });
-                
-                recordedChunks = [];
-                
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        recordedChunks.push(event.data);
-                    }
-                };
-                
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                    downloadVideo(blob);
-                    canvas.classList.add('hidden');
-                    hideLoading('btnExport', '<span class="material-icons mr-2">file_download</span>Export Video');
-                };
-                
-                mediaRecorder.start();
-                
-                // Render each scene
-                for (let i = 0; i < videoData.scenes.length; i++) {
-                    const scene = videoData.scenes[i];
+            // Generate video with Gemini API
+            fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateVideo?key=${apiKey}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    input: {
+                        text: script,
+                        voice: voice,
+                        audioConfig: {
+                            audioEncoding: 'MP3',
+                            speakingRate: rate,
+                            pitch: pitch,
+                        },
+                    },
+                    output: {
+                        video: {
+                            container: 'MP4',
+                            resolution: '720p',
+                        },
+                    },
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.output && data.output.video) {
+                    const videoUrl = data.output.video;
+                    const a = document.createElement('a');
+                    a.href = videoUrl;
+                    a.download = 'fireship_video.mp4';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
                     
-                    // Update progress
-                    const progress = Math.round(((i + 1) / videoData.scenes.length) * 100);
-                    document.getElementById('btnExport').innerHTML = 
-                        `<span class="spinner"></span>Exporting ${progress}%`;
-                    
-                    await renderSceneToCanvas(scene, ctx, canvas);
-                    await new Promise(resolve => setTimeout(resolve, scene.duration));
+                    showNotification('Video rendered successfully! Downloading...');
+                } else {
+                    throw new Error('Video rendering failed');
                 }
-                
-                mediaRecorder.stop();
-                
-            } catch (error) {
-                console.error('Export error:', error);
-                showNotification('Export failed', 'error');
+            })
+            .catch(error => {
+                console.error('Video rendering error:', error);
+                showNotification('Failed to render video. Check your API key.', 'error');
+            })
+            .finally(() => {
                 hideLoading('btnExport', '<span class="material-icons mr-2">file_download</span>Export Video');
-            }
-        }
-
-        async function renderSceneToCanvas(scene, ctx, canvas) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                
-                img.onload = () => {
-                    // Clear canvas
-                    ctx.fillStyle = '#1E293B';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
-                    // Calculate aspect ratio
-                    const canvasAspect = canvas.width / canvas.height;
-                    const imgAspect = img.width / img.height;
-                    
-                    let drawWidth, drawHeight, offsetX, offsetY;
-                    
-                    if (imgAspect > canvasAspect) {
-                        drawWidth = canvas.width;
-                        drawHeight = drawWidth / imgAspect;
-                        offsetX = 0;
-                        offsetY = (canvas.height - drawHeight) / 2;
-                    } else {
-                        drawHeight = canvas.height;
-                        drawWidth = drawHeight * imgAspect;
-                        offsetY = 0;
-                        offsetX = (canvas.width - drawWidth) / 2;
-                    }
-                    
-                    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-                    resolve();
-                };
-                
-                img.onerror = () => {
-                    // Draw placeholder
-                    ctx.fillStyle = '#334155';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.fillStyle = '#E2E8F0';
-                    ctx.font = '48px Inter';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`Scene ${scene.sceneNum}`, canvas.width/2, canvas.height/2);
-                    resolve();
-                };
-                
-                img.src = scene.localImageFile ? 
-                    URL.createObjectURL(scene.localImageFile) : 
-                    (scene.imageUrl || '');
             });
         }
 
-        function downloadVideo(blob) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `fireship-style-video-${Date.now()}.webm`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+        function stopPreview() {
+            const image = document.getElementById('previewImage');
+            const canvas = document.getElementById('exportCanvas');
+            const context = canvas.getContext('2d');
+            const video = document.createElement('video');
             
-            showNotification('Video exported successfully!');
+            video.src = image.src.replace('blob:', '');
+            video.pause();
+            video.src = '';
+            
+            image.classList.remove('hidden');
+            canvas.classList.add('hidden');
         }
 
-        // Initialize voices when they become available
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = initializeVoices;
+        // Video Export Function
+        function exportVideo() {
+            const script = document.getElementById('generatedScript').value.trim();
+            const apiKey = document.getElementById('geminiApiKey').value.trim();
+            const voice = document.getElementById('voiceType').value;
+            const rate = document.getElementById('speechRate').value;
+            const pitch = document.getElementById('voicePitch').value;
+            
+            if (!script) {
+                showNotification('No script available for video export', 'error');
+                return;
+            }
+            
+            showLoading('btnExport', 'Exporting Video...');
+            
+            // Generate video with Gemini API
+            fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateVideo?key=${apiKey}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    input: {
+                        text: script,
+                        voice: voice,
+                        audioConfig: {
+                            audioEncoding: 'MP3',
+                            speakingRate: rate,
+                            pitch: pitch,
+                        },
+                    },
+                    output: {
+                        video: {
+                            container: 'MP4',
+                            resolution: '720p',
+                        },
+                    },
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.output && data.output.video) {
+                    const videoUrl = data.output.video;
+                    const a = document.createElement('a');
+                    a.href = videoUrl;
+                    a.download = 'fireship_video.mp4';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    showNotification('Video exported successfully! Downloading...');
+                } else {
+                    throw new Error('Video export failed');
+                }
+            })
+            .catch(error => {
+                console.error('Video export error:', error);
+                showNotification('Failed to export video. Check your API key.', 'error');
+            })
+            .finally(() => {
+                hideLoading('btnExport', '<span class="material-icons mr-2">file_download</span>Export Video');
+            });
         }
     </script>
 </body>

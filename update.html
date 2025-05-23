@@ -7,7 +7,19 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
-    <script src="https://code.responsivevoice.org/responsivevoice.js?key=mF2MeDsL"></script>
+    <script>
+        //  load ResponsiveVoice API key from a hidden file in the same directory
+        fetch('.responsivevoice-key')
+            .then(response => response.text())
+            .then(key => {
+                const script = document.createElement('script');
+                script.src = `https://code.responsivevoice.org/responsivevoice.js?key=${key.trim()}`;
+                document.head.appendChild(script);
+            })
+            .catch(() => {
+                console.warn('ResponsiveVoice key file not found or could not be loaded.');
+            });
+    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
